@@ -1,0 +1,69 @@
+---
+title: "Multiclass Final Algorithm"
+author: "Leyuan Qian"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+
+```{r}
+library(dplyr)
+library(caret)
+library(randomForest)
+library(ggplot2)
+library(e1071)
+library(ROCR)
+library(pROC)
+library(xgboost) 
+library(neuralnet)
+library(adabag)
+library(MASS)
+```
+
+## Data Preprocessing
+
+```{r}
+training_data<-read.table("training_data.txt",header=T)
+testing_data<-read.table("test_data.txt",header=T)
+
+# Re-categorize the data
+training_set=mutate(training_data,multi_activity=activity)
+training_set$multi_activity[which(training_set$activity>6)]=7
+training_set$multi_activity=as.factor(training_set$multi_activity)
+training_set=training_set[,c(-1,-2)]
+```
+
+## Split Training Data for Hold-out Validation 
+
+```{r}
+set.seed(666)
+n_subjects=nrow(training_set)
+split_7_3 = sample(1:n_subjects,n_subjects*0.7)
+train = training_set[split_7_3,]
+test = training_set[-split_7_3,]
+```
+
+## Use SVM with radial kernel for classification
+
+```{r}
+set.seed(515)
+tune.out <- tune(svm, multi_activity~.,data = train, kernel = "radial",ranges = list(cost = c(0.01, 0.1, 1, 10, 100)))
+svm.fit=tune.out$best.model
+svm.fit
+svm.pred = predict(svm.fit, test)
+mean(svm.pred==test$multi_activity) # accuracy
+multiclass.roc(test$multi_activity,as.numeric(svm.pred)) # check auc
+```
+
+## Predict the multiclass activity for the test data
+
+```{r}
+final_pred=predict(svm.fit, testing_data)
+final=as.matrix(as.numeric(final_pred),ncol=1)
+#write.table(final,"multiclass_43454.txt", row.names = F, col.names = F)
+```
