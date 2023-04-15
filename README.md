@@ -12,7 +12,7 @@ The training data used to construct and test the classification algorithm is [tr
 
 The test data, containing only feature information, for activity prediction is [test_data.txt](/test_data.txt). 
 
-The two datasets above are required for running the code. Detailed information about the two datasets can be found in [data_dictionary.txt](/data_dictionary.txt) and [feature_info.txt](/feature_info.txt).
+The two datasets above are required for running the code. Detailed information about the two datasets can be found in [data_dictionary.txt](/data_dictionary.txt) and [features_info.txt](/features_info.txt).
 
 ## Code
 All the code used for training and evaluating for the binary classification task is in [Binary_Baseline.Rmd](/Binary_Baseline.Rmd).
