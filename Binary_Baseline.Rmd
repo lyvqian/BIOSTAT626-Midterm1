@@ -1,0 +1,261 @@
+---
+title: "Binary Baseline Algorithms"
+author: "Leyuan Qian"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+
+```{r}
+library(glmnet)
+library(caret)
+library(ROCR)
+library(pROC)
+library(e1071)
+library(MASS)
+library(randomForest)
+```
+
+## Data Preprocessing
+
+```{r}
+training_data<-read.table("training_data.txt",header=T)
+testing_data<-read.table("test_data.txt",header=T)
+
+# Re-categorize the data
+training_set=training_data
+training_set$binary_activity[which(training_set$activity<=3)]="dynamic"
+training_set$binary_activity[which(training_set$activity>=4)]="static"
+training_set$binary_activity=as.factor(training_set$binary_activity)
+training_set=training_set[,c(-1,-2)]
+```
+
+## Split Training Data for Hold-out Validation
+
+```{r}
+set.seed(62626)
+n_subjects=nrow(training_set)
+split_7_3 = sample(1:n_subjects,n_subjects*0.7)
+train = training_set[split_7_3,]
+test = training_set[-split_7_3,]
+```
+
+## Feature selection: Pearson Correlation
+
+```{r}
+correlationMatrix <- cor(train[,1:561])
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.8)
+length(highlyCorrelated)
+train_cor<-train[,-highlyCorrelated]
+```
+
+```{r}
+correlationMatrix2 <- cor(train[,1:561])
+highlyCorrelated2 <- findCorrelation(correlationMatrix2, cutoff=0.846) 
+length(highlyCorrelated2)
+train_cor2<-train[,-highlyCorrelated2]
+```
+
+## Feature selection: Lasso
+
+```{r}
+X=as.matrix(train[,-dim(train)[2]])
+Y=rep(0,nrow(train))
+Y[which(train$binary_activity=="static")]=1
+tune_cv <- cv.glmnet(x=X, y=Y, family="gaussian", intercept = F, alpha=1)
+plot(tune_cv)
+lambda1=tune_cv$lambda.min
+lambda2=tune_cv$lambda.1se
+
+model1 <- glmnet(X, Y, alpha = 1, lambda = lambda1)
+train_Lasso1<-train[,c(which(coef(model1)>0)-1,dim(train)[2])]
+
+model2 <- glmnet(X, Y, alpha = 1, lambda = lambda2)
+train_Lasso2<-train[,c(which(coef(model2)>0)-1,dim(train)[2])]
+```
+
+## Logistic Regression
+
+```{r}
+glm.fit=glm(binary_activity ~ ., data=train,family=binomial,maxit=200)
+glm.probs=predict(glm.fit, test, type="response")
+contrasts(train$binary_activity)
+glm.pred=rep("dynamic",dim(test)[1])
+glm.pred[glm.probs>0.5] = "static"
+
+table(glm.pred, test$binary_activity)
+mean(glm.pred==test$binary_activity) # accuracy
+roc(test$binary_activity ~ glm.probs) # check auc
+```
+
+```{r}
+glm.fit_cor=glm(binary_activity ~ ., data=train_cor,family=binomial,maxit=200)
+glm.probs_cor=predict(glm.fit_cor, test, type="response")
+contrasts(train_cor$binary_activity)
+glm.pred_cor=rep("dynamic",dim(test)[1])
+glm.pred_cor[glm.probs_cor>0.5] = "static"
+
+table(glm.pred_cor, test$binary_activity)
+mean(glm.pred_cor==test$binary_activity)
+roc(test$binary_activity ~ glm.probs_cor)
+```
+
+```{r}
+glm.fit_cor2=glm(binary_activity ~ ., data=train_cor2,family=binomial,maxit=200)
+glm.probs_cor2=predict(glm.fit_cor2, test, type="response")
+contrasts(train_cor2$binary_activity)
+glm.pred_cor2=rep("dynamic",dim(test)[1])
+glm.pred_cor2[glm.probs_cor2>0.5] = "static"
+
+table(glm.pred_cor2, test$binary_activity)
+mean(glm.pred_cor2==test$binary_activity)
+roc(test$binary_activity ~ glm.probs_cor2)
+```
+
+```{r}
+glm.fit2=glm(binary_activity ~ ., data=train_Lasso1,family=binomial,maxit=200) 
+glm.probs2=predict(glm.fit2, test, type="response")
+contrasts(train_Lasso1$binary_activity)
+glm.pred2=rep("dynamic",dim(test)[1])
+glm.pred2[glm.probs2>0.5] = "static"
+
+table(glm.pred2, test$binary_activity)
+mean(glm.pred2==test$binary_activity)
+roc(test$binary_activity ~ glm.probs2)
+```
+
+```{r}
+glm.fit3=glm(binary_activity ~ ., data=train_Lasso2,family=binomial,maxit=200) 
+glm.probs3=predict(glm.fit3, test, type="response")
+contrasts(train_Lasso2$binary_activity)
+glm.pred3=rep("dynamic",dim(test)[1])
+glm.pred3[glm.probs3>0.5] = "static"
+
+table(glm.pred3, test$binary_activity)
+mean(glm.pred3==test$binary_activity)
+roc(test$binary_activity~glm.probs3)
+```
+
+## kNN
+
+```{r}
+set.seed(1)
+tgrid <- expand.grid(.k = seq(1, ceiling(sqrt(ncol(train))), by = 2))
+tcontrol = trainControl(method = "cv")
+knn.train <- train(binary_activity ~ ., data = train, method = "knn", trControl = tcontrol, 
+    tuneGrid = tgrid)
+knn_pred = predict(knn.train,test)
+mean(knn_pred==test$binary_activity)
+```
+
+```{r}
+set.seed(1)
+tgrid_cor <- expand.grid(.k = seq(1, 73, by = 2))
+knn.train_cor <- train(binary_activity ~ ., data = train_cor, method = "knn", trControl = tcontrol, 
+    tuneGrid = tgrid_cor)
+knn.train_cor
+knn_pred_cor = predict(knn.train_cor,test)
+mean(knn_pred_cor==test$binary_activity)
+```
+
+## Naive Bayes
+
+```{r}
+nb.train<- naiveBayes(binary_activity~., data=train)
+nb_pred = predict(nb.train,test,prob=TRUE)
+# accuracy
+mean(nb_pred == test$binary_activity) 
+# check auc
+predvec <- ifelse(nb_pred=="static",1, 0)
+realvec <- ifelse(test$binary_activity=="static", 1, 0)
+ROCRpred <- prediction(predvec, realvec)
+as.numeric(performance(ROCRpred, "auc")@y.values)
+```
+
+```{r}
+nb.train_cor<- naiveBayes(binary_activity~., data=train_cor)
+nb_pred_cor = predict(nb.train_cor,test,prob=TRUE)
+# accuracy
+mean(nb_pred_cor == test$binary_activity)
+# check auc
+predvec_cor <- ifelse(nb_pred_cor=="static",1, 0)
+realvec_cor <- ifelse(test$binary_activity=="static", 1, 0)
+ROCRpred_cor <- prediction(predvec_cor, realvec_cor)
+as.numeric(performance(ROCRpred_cor, "auc")@y.values)
+```
+
+# Linear discriminant analysis
+
+```{r}
+lda.fit = lda(binary_activity~., data = train)
+lda.pred = predict(lda.fit, test)
+lda.class = lda.pred$class
+table(lda.class, test$binary_activity)
+# accuracy
+mean(lda.class==test$binary_activity)
+# check auc
+lda_pre=prediction(lda.pred$posterior[,2], test$binary_activity)
+as.numeric(performance(lda_pre,'auc')@y.values)
+```
+
+```{r}
+lda.fit_cor = lda(binary_activity~., data = train_cor)
+lda.pred_cor = predict(lda.fit_cor, test)
+lda.class_cor = lda.pred_cor$class
+table(lda.class_cor, test$binary_activity)
+
+mean(lda.class_cor==test$binary_activity)
+lda_pre_cor=prediction(lda.pred_cor$posterior[,2], test$binary_activity)
+as.numeric(performance(lda_pre_cor,'auc')@y.values)
+```
+
+## SVM with linear kernel
+
+```{r}
+tune.out <- tune(svm, binary_activity~.,data = train, kernel = "linear",ranges = list(cost = c(0.01, 0.1, 1, 10, 100)))
+svm.fit=tune.out$best.model
+svm.pred = predict(svm.fit, test)
+mean(svm.pred==test$binary_activity)
+```
+
+## SVM with radial kernel
+
+```{r}
+tune.out2 <- tune(svm, binary_activity~.,data = train , kernel = "radial",ranges = list(cost = c(0.01, 0.1, 1, 10, 100)))
+svm.fit2=tune.out2$best.model
+svm.pred2 = predict(svm.fit2, test)
+table(svm.pred2, test$binary_activity)
+mean(svm.pred2==test$binary_activity)
+```
+
+## Random Forest
+
+```{r}
+# Random Forest
+set.seed(123)
+best_mtry=0
+error=1
+for (i in 1:ceiling(sqrt(ncol(train)))){
+  mtry_fit=randomForest(binary_activity~., data=train,mtry=i)
+  err=mean(mtry_fit$err.rate)
+  if (err<error){
+     error=err
+     best_mtry=i
+  }
+}
+ntree_fit<-randomForest(binary_activity~.,data=train,mtry=best_mtry,ntree=1000)
+plot(ntree_fit)
+```
+
+```{r}
+rf=randomForest(binary_activity~., data=train, mtry=best_mtry, ntree=600,proximity = TRUE,
+                              importance = TRUE)
+rf_pred=predict(rf,test)
+table(rf_pred, test$binary_activity)
+mean(rf_pred==test$binary_activity)
+```
