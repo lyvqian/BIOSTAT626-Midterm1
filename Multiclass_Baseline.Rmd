@@ -99,6 +99,7 @@ multiclass.roc(test$multi_activity,as.numeric(svm.pred)) # check auc
 ### SVM with radial kernel
 
 ```{r}
+set.seed(515)
 tune.out2 <- tune(svm, multi_activity~.,data = train, kernel = "radial",ranges = list(cost = c(0.01, 0.1, 1, 10, 100)))
 svm.fit2=tune.out2$best.model
 svm.pred2 = predict(svm.fit2, test)
